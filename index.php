@@ -88,7 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
                 // update target list & keep existing metadata intact
                 foreach ($_SESSION['lists'] as &$list) {
                     if ($list['id'] === $list_id) {
-                        $list['name'] = htmlspecialchars($list_name, ENT_QUOTES, 'UTF-8');
+                        $list['name'] = $list_name;
 
                         $updated_tasks = [];
                         $seen_task_names = [];
@@ -110,7 +110,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
 
                             $updated_tasks[] = [
                                 'task_id' => $t_id,
-                                'task_name' => htmlspecialchars($clean_t_name, ENT_QUOTES, 'UTF-8'),
+                                'task_name' => $clean_t_name,
                                 'completed' => $is_completed
                             ];
                             $seen_task_names[] = strtolower($clean_t_name);
@@ -121,7 +121,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
                             if (!in_array(strtolower($new_task_input), $seen_task_names)) {
                                 $updated_tasks[] = [
                                     'task_id' => uniqid('t_'),
-                                    'task_name' => htmlspecialchars($new_task_input, ENT_QUOTES, 'UTF-8'),
+                                    'task_name' => $new_task_input,
                                     'completed' => false
                                 ];
                             } else {
@@ -243,6 +243,8 @@ function getCardStats(&$tasks) {
 $totalAllLists = count($_SESSION['lists']);
 ?>
 
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -266,11 +268,11 @@ $totalAllLists = count($_SESSION['lists']);
 
     <section class="form-section">
        <?php if ($error_message): ?>
-          <div style="color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #d32f2f;"><?= $error_message ?></div>
+          <div class="site-notification" =style="color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #d32f2f;"><?= $error_message ?></div>
       <?php endif; ?>
 
       <?php if ($success_message): ?>
-          <div style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center;">
+          <div class="site-notification" style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center;">
               <span><?= $success_message ?></span>
               <?php if ($_SESSION['last_deleted']): ?>
                 <form method="POST" style="margin:0;">
@@ -279,6 +281,17 @@ $totalAllLists = count($_SESSION['lists']);
                 </form>
               <?php endif; ?>
           </div>
+      <?php endif; ?>
+
+      <?php if ($error_message || $success_message): ?>
+        <script>
+          setTimeout(() => {
+            document.querySelectorAll('.site-notification').forEach((el) => {
+              el.style.opacity = '0';
+              setTimeout(() => { el.style.display = 'none'; }, 600);
+            });
+          }, 10000); 
+        </script>
       <?php endif; ?>
 
       <form method="POST" action="index.php" id="create-list-form" class="create-list-form">
