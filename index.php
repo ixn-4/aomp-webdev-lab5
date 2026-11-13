@@ -6,6 +6,7 @@ $success_message = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
     
+    // CREATE LIST
     if($_POST['action'] === 'create_list') {
         $list_name = trim($_POST['list_name'] ?? '');
         if (empty($list_name)) {
@@ -29,18 +30,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         }
     }
   
-    // 2. UPDATE LIST NAME
+    // UPDATE LIST
     if ($_POST['action'] === 'update_list') {
         $list_id = $_POST['list_id'] ?? '';
         $list_name = trim($_POST['list_name'] ?? '');
+        $submitted_tasks = $_POST['tasks'] ?? [];
+        $completed_task_ids = $_POST['completed_tasks'] ?? [];
+        
         if (!empty($list_name)) {
+            // A. Update List Name
             $stmt = $pdo->prepare("UPDATE lists SET name = ? WHERE id = ?");
             $stmt->execute([$list_name, $list_id]);
-            $success_message = "List updated successfully!";
+            
+            // B. Handle Tasks
+            $submitted_ids = [];
+            foreach ($submitted_tasks as $task_id => $task_name) {
+                $task_name = trim($task_name);
+                if (empty($task_name)) continue;
+                
+                $is_completed = in_array($task_id, $completed_task_ids) ? 1 : 0;
+                
+                if (strpos($task_id, 't_') === 0) {
+                    // Brand new task added via JS
+                    $stmt = $pdo->prepare("INSERT INTO tasks (list_id, task_name, is_completed) VALUES (?, ?, ?)");
+                    $stmt->execute([$list_id, $task_name, $is_completed]);
+                    $submitted_ids[] = $pdo->lastInsertId(); // Get the new database ID
+                } else {
+                    // Existing task being updated
+                    $stmt = $pdo->prepare("UPDATE tasks SET task_name = ?, is_completed = ? WHERE id = ? AND list_id = ?");
+                    $stmt->execute([$task_name, $is_completed, $task_id, $list_id]);
+                    $submitted_ids[] = $task_id;
+                }
+            }
+            
+            // C. Delete tasks that were removed from the modal
+            if (count($submitted_ids) > 0) {
+                $in_clause = implode(',', array_fill(0, count($submitted_ids), '?'));
+                $stmt = $pdo->prepare("DELETE FROM tasks WHERE list_id = ? AND id NOT IN ($in_clause)");
+                $stmt->execute(array_merge([$list_id], $submitted_ids));
+            } else {
+                // If no tasks remain in the modal, delete all tasks for this list
+                $stmt = $pdo->prepare("DELETE FROM tasks WHERE list_id = ?");
+                $stmt->execute([$list_id]);
+            }
+            
+            $success_message = "List and tasks updated successfully!";
         }
     }
 
-    // 3. DELETE LIST
+    // DELETE LIST
     if ($_POST['action'] === 'delete_list') {
         $list_id = $_POST['list_id'] ?? '';
         $stmt = $pdo->prepare("DELETE FROM lists WHERE id = ?");
@@ -48,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         $success_message = "List deleted.";
     }
 
-    // 4. PIN / UNPIN LIST
+    // PIN / UNPIN LIST
     if ($_POST['action'] === 'pin_list' || $_POST['action'] === 'unpin_list') {
         $list_id = $_POST['list_id'] ?? '';
         $pin = ($_POST['action'] === 'pin_list') ? 1 : 0;
@@ -57,7 +95,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         $success_message = "List pinned/unpinned!";
     }
 
-    // 5. ADD TASK
+    // ADD TASK
     if ($_POST['action'] === 'add_task') {
         $list_id = $_POST['list_id'] ?? '';
         $new_task = trim($_POST['new_task'] ?? '');
@@ -68,7 +106,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         }
     }
 
-    // 6. TOGGLE TASK (Check/Uncheck)
+    // TOGGLE TASK (Check/Uncheck)
     if ($_POST['action'] === 'toggle_task') {
         $task_id = $_POST['task_id'] ?? '';
         $stmt = $pdo->prepare("UPDATE tasks SET is_completed = NOT is_completed WHERE id = ?");
@@ -110,11 +148,11 @@ foreach ($lists as $list) {
     }
 }
 
-// 4. SORT THEM
+// SORT THEM
 uasort($pinnedLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 uasort($myLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 
-// 5. STATS FUNCTION (Keep this as is, it works perfectly)
+// STATS FUNCTION
 function getCardStats(&$tasks) {
     if (!is_array($tasks)) { $tasks = []; }
     $total = count($tasks);
