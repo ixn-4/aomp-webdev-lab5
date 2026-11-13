@@ -10,6 +10,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         $list_name = trim($_POST['list_name'] ?? '');
         if (empty($list_name)) {
             $error_message = "List name cannot be empty.";
+        } elseif (strlen($list_name) > 255) {
+            $error_message = "List name is too long (maximum 255 characters).";
         } else {
             // check for duplicates using a Prepared Statement to prevent SQL injection
             $stmt = $pdo->prepare("SELECT id FROM lists WHERE name =?");
