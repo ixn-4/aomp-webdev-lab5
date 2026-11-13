@@ -1,234 +1,118 @@
 <?php
-session_start();
+require_once 'db.php';
 
-if (!isset($_SESSION['lists'])) {
-    $_SESSION['lists'] = [];
-}
-
-if (!isset($_SESSION['last_deleted'])) {
-    $_SESSION['last_deleted'] = null;
-}
-
-$error_message = "";
+$error_message ="";
 $success_message = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
     
-    if ($_POST['action'] === 'create_list') {
+    if($_POST['action'] === 'create_list') {
         $list_name = trim($_POST['list_name'] ?? '');
-
         if (empty($list_name)) {
             $error_message = "List name cannot be empty.";
         } else {
-            $is_duplicate = false;
-            foreach ($_SESSION['lists'] as $existing_list) {
-                if (strtolower($existing_list['name']) === strtolower($list_name)) {
-                    $is_duplicate = true; break;
-                }
-            }
+            // check for duplicates using a Prepared Statement to prevent SQL injection
+            $stmt = $pdo->prepare("SELECT id FROM lists WHERE name =?");
+            $stmt->execute([$list_name]);
 
-            if ($is_duplicate) {
+            // If fetch() returns true, it means a list with that name already exists
+            if ($stmt->fetch()) {
                 $error_message = "A list with this name already exists.";
             } else {
-                $_SESSION['lists'][] = [
-                    'id' => uniqid(),
-                    'name' => $list_name,
-                    'is_pinned' => false,
-                    'tasks' => []
-                ];
+                // CREATE: Insert a new list into the database
+                $stmt = $pdo->prepare("INSERT INTO lists (name) VALUES (?)");
+                $stmt->execute([$list_name]);
                 $success_message = "List created successfully!";
             }
         }
     }
-
-    if ($_POST['action'] === 'pin_list') {
-        $list_id = $_POST['list_id'] ?? '';
-        foreach ($_SESSION['lists'] as &$list) {
-            if ($list['id'] === $list_id) {
-                $list['is_pinned'] = true;
-                $success_message = "List pinned to top!";
-                break;
-            }
-        }
-    }
-    if ($_POST['action'] === 'unpin_list') {
-        $list_id = $_POST['list_id'] ?? '';
-        foreach ($_SESSION['lists'] as &$list) {
-            if ($list['id'] === $list_id) {
-                $list['is_pinned'] = false;
-                $success_message = "List unpinned!";
-                break;
-            }
-        }
-    }
-
+  
+    // 2. UPDATE LIST NAME
     if ($_POST['action'] === 'update_list') {
         $list_id = $_POST['list_id'] ?? '';
         $list_name = trim($_POST['list_name'] ?? '');
-        $submitted_tasks = $_POST['tasks'] ?? [];
-        $completed_task_ids = $_POST['completed_tasks'] ?? [];
-        $new_task_input = trim($_POST['new_task'] ?? '');
-
-        // check if user left list title blank
-        if (empty($list_name)) {
-            $error_message = "List name cannot be empty.";
-        } else {
-            // check for duplicate list names (skip the one currently editing)
-            $is_duplicate = false;
-            foreach ($_SESSION['lists'] as $list) {
-                if ($list['id'] !== $list_id && strtolower($list['name']) === strtolower($list_name)) {
-                    $is_duplicate = true;
-                    break;
-                }
-            }
-
-            if ($is_duplicate) {
-                $error_message = "Another list with this name already exists.";
-            } else {
-                // update target list & keep existing metadata intact
-                foreach ($_SESSION['lists'] as &$list) {
-                    if ($list['id'] === $list_id) {
-                        $list['name'] = htmlspecialchars($list_name, ENT_QUOTES, 'UTF-8');
-
-                        $updated_tasks = [];
-                        $seen_task_names = [];
-
-                        // loop through submitted tasks & toggle status if checked
-                        foreach ($submitted_tasks as $t_id => $t_name) {
-                            $clean_t_name = trim($t_name);
-
-                            if (empty($clean_t_name)) continue;
-
-                            // skip dupes inside same list
-                            if (in_array(strtolower($clean_t_name), $seen_task_names)) {
-                                $error_message = "Duplicate tasks detected inside list.";
-                                continue;
-                            }
-
-                            // if id is in array = completed, else reopen task
-                            $is_completed = in_array($t_id, $completed_task_ids);
-
-                            $updated_tasks[] = [
-                                'task_id' => $t_id,
-                                'task_name' => htmlspecialchars($clean_t_name, ENT_QUOTES, 'UTF-8'),
-                                'completed' => $is_completed
-                            ];
-                            $seen_task_names[] = strtolower($clean_t_name);
-                        }
-
-                        // append new task if entered directly inside modal
-                        if (!empty($new_task_input)) {
-                            if (!in_array(strtolower($new_task_input), $seen_task_names)) {
-                                $updated_tasks[] = [
-                                    'task_id' => uniqid('t_'),
-                                    'task_name' => htmlspecialchars($new_task_input, ENT_QUOTES, 'UTF-8'),
-                                    'completed' => false
-                                ];
-                            } else {
-                                $error_message = "The new task was skipped because it's a duplicate.";
-                            }
-                        }
-
-                        $list['tasks'] = $updated_tasks;
-                        if (empty($error_message)) {
-                            $success_message = "List updated successfully!";
-                        }
-                        break;
-                    }
-                }
-            }
+        if (!empty($list_name)) {
+            $stmt = $pdo->prepare("UPDATE lists SET name = ? WHERE id = ?");
+            $stmt->execute([$list_name, $list_id]);
+            $success_message = "List updated successfully!";
         }
     }
 
+    // 3. DELETE LIST
     if ($_POST['action'] === 'delete_list') {
         $list_id = $_POST['list_id'] ?? '';
-        foreach ($_SESSION['lists'] as $index => $list) {
-            if ($list['id'] === $list_id) {
-                $_SESSION['last_deleted'] = ['list' => $list, 'index' => $index];
-                array_splice($_SESSION['lists'], $index, 1);
-                $success_message = "List deleted. Click Undo to restore.";
-                break;
-            }
-        }
+        $stmt = $pdo->prepare("DELETE FROM lists WHERE id = ?");
+        $stmt->execute([$list_id]);
+        $success_message = "List deleted.";
     }
 
-    if ($_POST['action'] === 'undo_delete') {
-        if (!empty($_SESSION['last_deleted'])) {
-            $last = $_SESSION['last_deleted'];
-            array_splice($_SESSION['lists'], $last['index'], 0, [$last['list']]);
-            $_SESSION['last_deleted'] = null;
-            $success_message = "Delete undone!";
-        }
-    }
-
+    // 4. PIN / UNPIN LIST
     if ($_POST['action'] === 'pin_list' || $_POST['action'] === 'unpin_list') {
-        $list_id = $_POST['list_id'];
-        $pin = ($_POST['action'] === 'pin_list') ? true : false;
-        foreach ($_SESSION['lists'] as &$list) {
-            if ($list['id'] === $list_id) {
-                $list['is_pinned'] = $pin;
-                break;
-            }
-        }
-        unset($list);
+        $list_id = $_POST['list_id'] ?? '';
+        $pin = ($_POST['action'] === 'pin_list') ? 1 : 0;
+        $stmt = $pdo->prepare("UPDATE lists SET is_pinned = ? WHERE id = ?");
+        $stmt->execute([$pin, $list_id]);
+        $success_message = "List pinned/unpinned!";
     }
 
+    // 5. ADD TASK
     if ($_POST['action'] === 'add_task') {
-        $list_id = $_POST['list_id'];
-        $new_task = trim($_POST['new_task']);
-
-        if (empty($new_task)) {
-            $error_message = "Task cannot be empty.";
-        } else {
-            foreach ($_SESSION['lists'] as &$list) {
-                if ($list['id'] === $list_id) {
-                    $list['tasks'][] = [
-                        'task_id' => uniqid(), 
-                        'task_name' => $new_task, 
-                        'completed' => false
-                    ];
-                    $success_message = "Task added successfully!";
-                    break;
-                }
-            }
-            unset($list);
+        $list_id = $_POST['list_id'] ?? '';
+        $new_task = trim($_POST['new_task'] ?? '');
+        if (!empty($new_task)) {
+            $stmt = $pdo->prepare("INSERT INTO tasks (list_id, task_name) VALUES (?, ?)");
+            $stmt->execute([$list_id, $new_task]);
+            $success_message = "Task added successfully!";
         }
     }
 
-        if ($_POST['action'] === 'toggle_task') {
-        $list_id = $_POST['list_id'];
-        $task_id = $_POST['task_id'];
-        
-        foreach ($_SESSION['lists'] as &$list) {
-            if ($list['id'] === $list_id) {
-                foreach ($list['tasks'] as &$task) {
-                    if ($task['task_id'] === $task_id) {
-                        $task['completed'] = !$task['completed'];
-                        $success_message = "Task status updated!";
-                        break;
-                    }
-                }
-                unset($task);
-                break;
-            }
-        }
+    // 6. TOGGLE TASK (Check/Uncheck)
+    if ($_POST['action'] === 'toggle_task') {
+        $task_id = $_POST['task_id'] ?? '';
+        $stmt = $pdo->prepare("UPDATE tasks SET is_completed = NOT is_completed WHERE id = ?");
+        $stmt->execute([$task_id]);
+        $success_message = "Task status updated!";
     }
-    unset($list);
+
+}
+
+//fetch all lists from database
+$stmt =$pdo->query("SELECT * FROM lists ORDER BY is_pinned DESC, name ASC");
+$db_lists = $stmt->fetchALl();
+
+$lists = [];
+
+//attach list to each list
+foreach ($db_lists as $list) {
+  // fetch tasks for this specific list
+    $stmt = $pdo->prepare("SELECT * FROM tasks WHERE list_id = ?");
+    $stmt->execute([$list['id']]);
+    $tasks = $stmt->fetchAll();
+
+    foreach ($tasks as &$task) {
+        $task['completed'] = $task['is_completed'];
+        $task['task_id'] = $task['id'];
+    }
+
+    $list['tasks'] = $tasks;
+    $lists[] = $list;
 }
 
 $pinnedLists = [];
 $myLists = [];
-foreach ($_SESSION['lists'] as $index => $list) {
+foreach ($lists as $list) {
     if (!empty($list['is_pinned'])) {
-        $pinnedLists[$index] = $list;
+        $pinnedLists[] = $list;
     } else {
-        $myLists[$index] = $list;
+        $myLists[] = $list;
     }
 }
 
+// 4. SORT THEM
 uasort($pinnedLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 uasort($myLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 
+// 5. STATS FUNCTION (Keep this as is, it works perfectly)
 function getCardStats(&$tasks) {
     if (!is_array($tasks)) { $tasks = []; }
     $total = count($tasks);
@@ -240,7 +124,7 @@ function getCardStats(&$tasks) {
     return ['total' => $total, 'done' => $done, 'percent' => $percent];
 }
 
-$totalAllLists = count($_SESSION['lists']);
+$totalAllLists = count($lists);
 ?>
 
 <!DOCTYPE html>
@@ -272,12 +156,6 @@ $totalAllLists = count($_SESSION['lists']);
       <?php if ($success_message): ?>
           <div style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center;">
               <span><?= $success_message ?></span>
-              <?php if ($_SESSION['last_deleted']): ?>
-                <form method="POST" style="margin:0;">
-                    <input type="hidden" name="action" value="undo_delete">
-                    <button type="submit" style="background:none; border:none; color:#2e7d32; text-decoration:underline; cursor:pointer; font-weight:600;">Undo Delete</button>
-                </form>
-              <?php endif; ?>
           </div>
       <?php endif; ?>
 

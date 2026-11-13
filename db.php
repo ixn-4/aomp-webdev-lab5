@@ -2,7 +2,7 @@
 $host = 'localhost';
 $dbname = 'toodue_db';
 $username = 'root';
-$password = '';
+$password = 'root'; // Changed '' to 'root' for MAMP default password
 
 try 
 {
