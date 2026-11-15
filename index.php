@@ -14,15 +14,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         } elseif (strlen($list_name) > 255) {
             $error_message = "List name is too long (maximum 255 characters).";
         } else {
-            // check for duplicates using a Prepared Statement to prevent SQL injection
+            // check for duplicates
             $stmt = $pdo->prepare("SELECT id FROM lists WHERE name =?");
             $stmt->execute([$list_name]);
 
-            // If fetch() returns true, it means a list with that name already exists
             if ($stmt->fetch()) {
                 $error_message = "A list with this name already exists.";
             } else {
-                // CREATE: Insert a new list into the database
                 $stmt = $pdo->prepare("INSERT INTO lists (name) VALUES (?)");
                 $stmt->execute([$list_name]);
                 $success_message = "List created successfully!";
@@ -38,11 +36,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         $completed_task_ids = $_POST['completed_tasks'] ?? [];
         
         if (!empty($list_name)) {
-            // A. Update List Name
             $stmt = $pdo->prepare("UPDATE lists SET name = ? WHERE id = ?");
             $stmt->execute([$list_name, $list_id]);
-            
-            // B. Handle Tasks
             $submitted_ids = [];
             foreach ($submitted_tasks as $task_id => $task_name) {
                 $task_name = trim($task_name);
@@ -62,14 +57,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
                     $submitted_ids[] = $task_id;
                 }
             }
-            
-            // C. Delete tasks that were removed from the modal
             if (count($submitted_ids) > 0) {
                 $in_clause = implode(',', array_fill(0, count($submitted_ids), '?'));
                 $stmt = $pdo->prepare("DELETE FROM tasks WHERE list_id = ? AND id NOT IN ($in_clause)");
                 $stmt->execute(array_merge([$list_id], $submitted_ids));
             } else {
-                // If no tasks remain in the modal, delete all tasks for this list
+                // delete all tasks if modal is empty
                 $stmt = $pdo->prepare("DELETE FROM tasks WHERE list_id = ?");
                 $stmt->execute([$list_id]);
             }
@@ -116,15 +109,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
 
 }
 
-//fetch all lists from database
 $stmt =$pdo->query("SELECT * FROM lists ORDER BY is_pinned DESC, name ASC");
 $db_lists = $stmt->fetchALl();
 
 $lists = [];
 
-//attach list to each list
+// attach tasks to their respective lists
 foreach ($db_lists as $list) {
-  // fetch tasks for this specific list
     $stmt = $pdo->prepare("SELECT * FROM tasks WHERE list_id = ?");
     $stmt->execute([$list['id']]);
     $tasks = $stmt->fetchAll();
@@ -148,7 +139,7 @@ foreach ($lists as $list) {
     }
 }
 
-// SORT THEM
+// sort lists alphabetically by name (case-insensitive)
 uasort($pinnedLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 uasort($myLists, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 
