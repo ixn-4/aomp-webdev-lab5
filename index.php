@@ -1,8 +1,10 @@
 <?php
+session_start();
 require_once 'db.php';
 
-$error_message ="";
-$success_message = "";
+$error_message = $_SESSION['error_message'] ?? "";
+$success_message = $_SESSION['success_message'] ?? "";
+unset($_SESSION['error_message'], $_SESSION['success_message']);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
     
@@ -107,6 +109,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         $success_message = "Task status updated!";
     }
 
+    $_SESSION['error_message'] = $error_message;
+    $_SESSION['success_message'] = $success_message;
+    session_write_close();
+    header("Location: " . $_SERVER['REQUEST_URI'], true, 303);
+    exit();
 }
 
 $stmt =$pdo->query("SELECT * FROM lists ORDER BY is_pinned DESC, name ASC");
@@ -180,12 +187,12 @@ $totalAllLists = count($lists);
     </section>
 
     <section class="form-section">
-       <?php if ($error_message): ?>
-          <div style="color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #d32f2f;"><?= $error_message ?></div>
+      <?php if ($error_message): ?>
+          <div class="notification" style="color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #d32f2f; transition: opacity 0.5s ease;"><?= $error_message ?></div>
       <?php endif; ?>
 
       <?php if ($success_message): ?>
-          <div style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center;">
+          <div class="notification" style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center; transition: opacity 0.5s ease;">
               <span><?= $success_message ?></span>
           </div>
       <?php endif; ?>
