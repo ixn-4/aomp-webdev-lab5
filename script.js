@@ -1,4 +1,15 @@
 document.addEventListener("DOMContentLoaded", () => {
+  const notification = document.querySelectorAll(".notification");
+
+  notification.forEach(notification => {
+      setTimeout(() => {
+        notification.style.opacity = "0";
+        
+        setTimeout(() => {
+          notification.remove();
+        }, 500);
+      }, 3500);
+    });
   
   document.addEventListener("submit", (e) => {
     if (e.target.classList.contains("delete-form")) {
