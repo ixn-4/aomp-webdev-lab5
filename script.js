@@ -1,15 +1,25 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const notification = document.querySelectorAll(".notification");
+  
+  const notifications = document.querySelectorAll('.notification, .undo-form');
+  notifications.forEach(notification => {
+    setTimeout(() => {
+      notification.classList.add('hide');
+      setTimeout(() => { notification.remove(); }, 500); 
+    }, 60000); 
+  });
 
-  notification.forEach(notification => {
-      setTimeout(() => {
-        notification.style.opacity = "0";
-        
-        setTimeout(() => {
-          notification.remove();
-        }, 500);
-      }, 3500);
-    });
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const activeTag = document.activeElement.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+
+      const undoInput = document.querySelector('input[value="undo_delete"]');
+      if (undoInput) {
+        e.preventDefault(); 
+        undoInput.closest('form').submit();
+      }
+    }
+  });
   
   document.addEventListener("submit", (e) => {
     if (e.target.classList.contains("delete-form")) {

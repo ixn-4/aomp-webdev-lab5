@@ -7,6 +7,10 @@ $success_message = $_SESSION['success_message'] ?? "";
 unset($_SESSION['error_message'], $_SESSION['success_message']);
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
+
+    if ($_POST['action'] !== 'delete_list' && $_POST['action'] !== 'undo_delete') {
+        $_SESSION['last_deleted_list'] = null;
+    }
     
     // CREATE LIST
     if($_POST['action'] === 'create_list') {
@@ -73,12 +77,48 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['action'])) {
         }
     }
 
-    // DELETE LIST
+        // DELETE LIST
     if ($_POST['action'] === 'delete_list') {
         $list_id = $_POST['list_id'] ?? '';
-        $stmt = $pdo->prepare("DELETE FROM lists WHERE id = ?");
+        
+        $stmt = $pdo->prepare("SELECT * FROM lists WHERE id = ?");
         $stmt->execute([$list_id]);
-        $success_message = "List deleted.";
+        $list_to_delete = $stmt->fetch();
+        
+        if ($list_to_delete) {
+            $stmt_tasks = $pdo->prepare("SELECT * FROM tasks WHERE list_id = ?");
+            $stmt_tasks->execute([$list_id]);
+            $tasks_to_delete = $stmt_tasks->fetchAll();
+            
+            $_SESSION['last_deleted_list'] = [
+                'list' => $list_to_delete,
+                'tasks' => $tasks_to_delete
+            ];
+            
+            $stmt = $pdo->prepare("DELETE FROM lists WHERE id = ?");
+            $stmt->execute([$list_id]);
+            $success_message = "List deleted. Click Undo to restore.";
+        }
+    }
+
+        // UNDO DELETE
+    if ($_POST['action'] === 'undo_delete') {
+        if (!empty($_SESSION['last_deleted_list'])) {
+            $snapshot = $_SESSION['last_deleted_list'];
+            $list = $snapshot['list'];
+            $tasks = $snapshot['tasks'];
+            
+            $stmt = $pdo->prepare("INSERT INTO lists (id, name, is_pinned) VALUES (?, ?, ?)");
+            $stmt->execute([$list['id'], $list['name'], $list['is_pinned']]);
+            
+            foreach ($tasks as $task) {
+                $stmt = $pdo->prepare("INSERT INTO tasks (list_id, task_name, is_completed) VALUES (?, ?, ?)");
+                $stmt->execute([$task['list_id'], $task['task_name'], $task['is_completed']]);
+            }
+            
+            $_SESSION['last_deleted_list'] = null;
+            $success_message = "List restored successfully!";
+        }
     }
 
     // PIN / UNPIN LIST
@@ -186,16 +226,28 @@ $totalAllLists = count($lists);
       </div>
     </section>
 
-    <section class="form-section">
-      <?php if ($error_message): ?>
-          <div class="notification" style="color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #d32f2f; transition: opacity 0.5s ease;"><?= $error_message ?></div>
-      <?php endif; ?>
+    <div id="toast-container">
+        <?php if ($error_message): ?>
+            <div class="notification error">
+                <span><?= $error_message ?></span>
+            </div>
+        <?php endif; ?>
 
-      <?php if ($success_message): ?>
-          <div class="notification" style="color: #2e7d32; background: #e8f5e9; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2e7d32; display: flex; justify-content: space-between; align-items: center; transition: opacity 0.5s ease;">
-              <span><?= $success_message ?></span>
-          </div>
-      <?php endif; ?>
+        <?php if ($success_message): ?>
+            <div class="notification success">
+                <span><?= $success_message ?></span>
+                
+                <?php if (!empty($_SESSION['last_deleted_list'])): ?>
+                    <form method="POST" style="margin:0;">
+                        <input type="hidden" name="action" value="undo_delete">
+                        <button type="submit" class="undo-btn">Undo Delete</button>
+                    </form>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <section class="form-section">
 
       <form method="POST" action="index.php" id="create-list-form" class="create-list-form">
         <input type="hidden" name="action" value="create_list">
